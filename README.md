@@ -10,6 +10,8 @@ A virtual pet companion for [OpenCode](https://opencode.ai) — raise a pet whil
 (_|   |_)
 ```
 
+![cligochi screenshot](screenshot.png)
+
 Your pet reacts to your coding activity: commits, test runs, errors, file saves, and more. Each pet has a rarity tier, unique ASCII art, and Fallout-style S.P.E.C.I.A.L. stats.
 
 ## Features

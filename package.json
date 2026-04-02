@@ -7,7 +7,6 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
-    "./tui": "./dist/tui.jsx",
     "./server": "./dist/index.js",
     "./dist/*": "./dist/*"
   },
