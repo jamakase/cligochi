@@ -2,15 +2,22 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui";
 import { createSignal, createMemo, onCleanup, Show, For } from "solid-js";
 import { Pet } from "./engine/pet.js";
-import { checkTraits } from "./engine/traits.js";
-import { getReaction, shouldShowToast, resetToastThrottle } from "./engine/reactions.js";
-import { getPet, getPets } from "./pets/registry.js";
+import { checkTraits, getTraitDefinition } from "./engine/traits.js";
+import { getReaction, shouldShowToast } from "./engine/reactions.js";
+import { getPet } from "./pets/registry.js";
 import { rollRandomPet } from "./pets/random.js";
-import { getTraitDefinition, TRAITS } from "./engine/traits.js";
 import { load, save, defaultState, petStateToCounters, countersToSerialized } from "./store/state.js";
-import type { PetState, Mood, TraitId, Rarity } from "./engine/types.js";
+import type { PetState, Mood, TraitId, Rarity, Special, PetSpecies } from "./engine/types.js";
 
 const id = "cligochi";
+
+// Global visibility + pet state signals (shared between sidebar and commands)
+const [sidebarVisible, setSidebarVisible] = createSignal(true);
+const [globalPetVersion, setGlobalPetVersion] = createSignal(0);
+
+function bumpPet() {
+  setGlobalPetVersion((v) => v + 1);
+}
 
 function loadPet(): Pet | null {
   const state = load();
@@ -19,7 +26,7 @@ function loadPet(): Pet | null {
   return new Pet(state.petId, state.name, state.stats, state.traits, counters);
 }
 
-function createPet(): Pet {
+function createRandomPet(): Pet {
   const rolled = rollRandomPet();
   const initial = defaultState(rolled.id, rolled.name);
   save(initial);
@@ -41,20 +48,14 @@ function savePet(pet: Pet): void {
   save(state);
 }
 
+function hasPet(): boolean {
+  return load() !== null;
+}
+
 function statBar(value: number, width: number = 10): string {
   const filled = Math.round((value / 100) * width);
   const empty = width - filled;
   return "\u2588".repeat(filled) + "\u2591".repeat(empty);
-}
-
-function rarityDisplay(rarity: Rarity): string {
-  switch (rarity) {
-    case "common":    return "Common";
-    case "uncommon":  return "★ Uncommon";
-    case "rare":      return "★★ Rare";
-    case "epic":      return "★★★ Epic";
-    case "legendary": return "★★★★★ Legendary";
-  }
 }
 
 function moodEmoji(mood: Mood): string {
@@ -64,6 +65,16 @@ function moodEmoji(mood: Mood): string {
     case "sad": return ":(";
     case "sleeping": return "-.-";
     case "angry": return ">:(";
+  }
+}
+
+function rarityDisplay(rarity: Rarity): string {
+  switch (rarity) {
+    case "common":    return "Common";
+    case "uncommon":  return "★ Uncommon";
+    case "rare":      return "★★ Rare";
+    case "epic":      return "★★★ Epic";
+    case "legendary": return "★★★★★ Legendary";
   }
 }
 
@@ -77,7 +88,6 @@ function PetSidebar(props: { api: TuiPluginApi; sessionId: string }) {
     setPet(loadPet());
   };
 
-  // Decay timer
   const decayTimer = setInterval(() => {
     const p = pet();
     if (!p) return;
@@ -87,7 +97,6 @@ function PetSidebar(props: { api: TuiPluginApi; sessionId: string }) {
     refreshPet();
   }, 5 * 60 * 1000);
 
-  // Refresh on events
   const unsubscribers = [
     props.api.event.on("file.edited", () => {
       const p = pet();
@@ -155,13 +164,27 @@ function PetSidebar(props: { api: TuiPluginApi; sessionId: string }) {
 
   const currentPet = createMemo(() => {
     tick();
+    const ver = globalPetVersion();
+    if (ver > 0) setPet(loadPet());
     return pet();
   });
 
   return (
     <Show when={currentPet()} fallback={
       <box gap={0}>
-        <text fg={props.api.theme.current.textMuted}>Run /cligochi to get your pet!</text>
+        <text fg={props.api.theme.current.accent}>{"    *  *  *"}</text>
+        <text fg={props.api.theme.current.accent}>{"   \\|/\\|/"}</text>
+        <text fg={props.api.theme.current.accent}>{"  +---------+"}</text>
+        <text fg={props.api.theme.current.accent}>{"  |  ~   ~  |"}</text>
+        <text fg={props.api.theme.current.accent}>{"--+----+----+--"}</text>
+        <text fg={props.api.theme.current.accent}>{"  |    |    |"}</text>
+        <text fg={props.api.theme.current.accent}>{"  |  ? | ?  |"}</text>
+        <text fg={props.api.theme.current.accent}>{"  |    |    |"}</text>
+        <text fg={props.api.theme.current.accent}>{"  +---------+"}</text>
+        <box paddingTop={1}>
+          <text fg={props.api.theme.current.textMuted}>A mystery pet awaits...</text>
+          <text fg={props.api.theme.current.textMuted}>Run /cligochi to open!</text>
+        </box>
       </box>
     }>
       {(p: () => Pet) => {
@@ -190,18 +213,6 @@ function PetSidebar(props: { api: TuiPluginApi; sessionId: string }) {
                 {rarityDisplay(petDef()!.rarity)}
               </text>
             </Show>
-
-            <box paddingTop={1} gap={0}>
-              <text fg={props.api.theme.current.textMuted}>
-                HNG {statBar(p().stats.hunger)} {Math.round(p().stats.hunger)}
-              </text>
-              <text fg={props.api.theme.current.textMuted}>
-                HAP {statBar(p().stats.happiness)} {Math.round(p().stats.happiness)}
-              </text>
-              <text fg={props.api.theme.current.textMuted}>
-                HP  {statBar(p().stats.health)} {Math.round(p().stats.health)}
-              </text>
-            </box>
 
             <Show when={p().getTraits().length > 0}>
               <box paddingTop={1} gap={0}>
@@ -235,35 +246,130 @@ function PetSidebar(props: { api: TuiPluginApi; sessionId: string }) {
   );
 }
 
+function showActionMenu(api: TuiPluginApi) {
+  const DialogSelect = api.ui.DialogSelect;
+  api.ui.dialog.setSize("medium");
+  api.ui.dialog.replace(() => (
+    <DialogSelect
+      title="Cligochi"
+      options={[
+        { title: "Status", value: "status", description: "View your pet's stats" },
+        { title: "Pet", value: "pet", description: "Give your pet some love" },
+        { title: "Feed", value: "feed", description: "Feed your hungry pet" },
+      ]}
+      onSelect={(option) => {
+        api.ui.dialog.clear();
+        const p = loadPet();
+        if (!p) return;
+        const def = getPet(p.petId);
+
+        if (option.value === "status") {
+          if (!def) return;
+          const mood = p.getMood();
+          const artText = def.art[mood]?.[0] ?? "";
+          const traits = p.getTraits().map((t) => {
+            const d = getTraitDefinition(t);
+            return d ? d.name : t;
+          });
+          const s = load()?.special;
+          const lines = [
+            artText,
+            "",
+            `${p.name} the ${def.species} (${mood}) - ${rarityDisplay(def.rarity)}`,
+            "",
+            `S.P.E.C.I.A.L.`,
+            `STR ${statBar((s?.strength ?? 5) * 10)} ${s?.strength ?? "?"}`,
+            `PER ${statBar((s?.perception ?? 5) * 10)} ${s?.perception ?? "?"}`,
+            `END ${statBar((s?.endurance ?? 5) * 10)} ${s?.endurance ?? "?"}`,
+            `CHR ${statBar((s?.charisma ?? 5) * 10)} ${s?.charisma ?? "?"}`,
+            `INT ${statBar((s?.intelligence ?? 5) * 10)} ${s?.intelligence ?? "?"}`,
+            `AGI ${statBar((s?.agility ?? 5) * 10)} ${s?.agility ?? "?"}`,
+            `LCK ${statBar((s?.luck ?? 5) * 10)} ${s?.luck ?? "?"}`,
+          ];
+          if (traits.length > 0) {
+            lines.push("", "Traits: " + traits.join(", "));
+          }
+          api.ui.toast({
+            variant: "info",
+            title: "Cligochi Status",
+            message: lines.join("\n"),
+            duration: 10000,
+          });
+        } else if (option.value === "pet") {
+          p.stats.happiness = Math.min(100, p.stats.happiness + 5);
+          savePet(p);
+          bumpPet();
+          const petName = def?.name ?? p.name;
+          const species = def?.species ?? "Pet";
+          const reactions = [
+            `${petName} purrs contentedly...`,
+            `${petName} nuzzles your hand!`,
+            `${petName} looks happy!`,
+            `${petName} wags... wait, can a ${species} wag?`,
+            `${petName} does a little dance!`,
+          ];
+          api.ui.toast({
+            variant: "success",
+            title: `Petting ${petName}`,
+            message: reactions[Math.floor(Math.random() * reactions.length)]!,
+            duration: 3000,
+          });
+        } else if (option.value === "feed") {
+          p.feed();
+          savePet(p);
+          bumpPet();
+          const petName = def?.name ?? p.name;
+          const hungerPct = Math.round(p.stats.hunger);
+          const reactions = [
+            `${petName} gobbles it up! (hunger: ${hungerPct}%)`,
+            `${petName} says: om nom nom! (hunger: ${hungerPct}%)`,
+            `Delicious! ${petName} is satisfied. (hunger: ${hungerPct}%)`,
+            `${petName} eats happily! (hunger: ${hungerPct}%)`,
+          ];
+          api.ui.toast({
+            variant: "success",
+            title: `Feeding ${petName}`,
+            message: reactions[Math.floor(Math.random() * reactions.length)]!,
+            duration: 3000,
+          });
+        }
+      }}
+    />
+  ));
+}
+
 const tui: TuiPlugin = async (api) => {
-  // Register sidebar slot
+  // Sidebar
   api.slots.register({
-    order: 200,
+    order: 50,
     slots: {
       sidebar_content(_ctx: unknown, props: { session_id: string }) {
-        return <PetSidebar api={api} sessionId={props.session_id} />;
+        return (
+          <Show when={sidebarVisible()}>
+            <PetSidebar api={api} sessionId={props.session_id} />
+          </Show>
+        );
       },
     },
   });
 
-  // Register /cligochi command
+  // Commands
   api.command.register(() => [
     {
       title: "Cligochi",
       value: "cligochi",
-      description: "View your virtual pet's status",
+      description: "Your virtual pet companion",
       category: "Pet",
-      slash: {
-        name: "cligochi",
-      },
+      slash: { name: "cligochi" },
       onSelect: () => {
-        const isFirstRun = !load();
-        const p = isFirstRun ? createPet() : loadPet()!;
-        const def = getPet(p.petId);
-        if (!def) return;
-
-        if (isFirstRun) {
-          const artText = def.art["happy"][0] ?? "";
+        if (!hasPet()) {
+          const p = createRandomPet();
+          const def = getPet(p.petId);
+          bumpPet();
+          setSidebarVisible(true);
+          if (!def) return;
+          const artText = def.art["happy"]?.[0] ?? "";
+          const s = load()?.special;
           const lines = [
             artText,
             "",
@@ -272,9 +378,14 @@ const tui: TuiPlugin = async (api) => {
             "",
             `"${def.description}"`,
             "",
-            `Hunger:    ${statBar(p.stats.hunger)} ${Math.round(p.stats.hunger)}%`,
-            `Happiness: ${statBar(p.stats.happiness)} ${Math.round(p.stats.happiness)}%`,
-            `Health:    ${statBar(p.stats.health)} ${Math.round(p.stats.health)}%`,
+            `S.P.E.C.I.A.L.`,
+            `STR ${statBar((s?.strength ?? 5) * 10)} ${s?.strength ?? "?"}`,
+            `PER ${statBar((s?.perception ?? 5) * 10)} ${s?.perception ?? "?"}`,
+            `END ${statBar((s?.endurance ?? 5) * 10)} ${s?.endurance ?? "?"}`,
+            `CHR ${statBar((s?.charisma ?? 5) * 10)} ${s?.charisma ?? "?"}`,
+            `INT ${statBar((s?.intelligence ?? 5) * 10)} ${s?.intelligence ?? "?"}`,
+            `AGI ${statBar((s?.agility ?? 5) * 10)} ${s?.agility ?? "?"}`,
+            `LCK ${statBar((s?.luck ?? 5) * 10)} ${s?.luck ?? "?"}`,
           ];
           api.ui.toast({
             variant: "success",
@@ -284,34 +395,7 @@ const tui: TuiPlugin = async (api) => {
           });
           return;
         }
-
-        const mood = p.getMood();
-        const artText = def.art[mood][0] ?? "";
-        const traits = p.getTraits().map((t) => {
-          const d = getTraitDefinition(t);
-          return d ? d.name : t;
-        });
-
-        const lines = [
-          artText,
-          "",
-          `${p.name} the ${def.species} (${mood}) - ${rarityDisplay(def.rarity)}`,
-          "",
-          `Hunger:    ${statBar(p.stats.hunger)} ${Math.round(p.stats.hunger)}%`,
-          `Happiness: ${statBar(p.stats.happiness)} ${Math.round(p.stats.happiness)}%`,
-          `Health:    ${statBar(p.stats.health)} ${Math.round(p.stats.health)}%`,
-        ];
-
-        if (traits.length > 0) {
-          lines.push("", "Traits: " + traits.join(", "));
-        }
-
-        api.ui.toast({
-          variant: "info",
-          title: "Cligochi Status",
-          message: lines.join("\n"),
-          duration: 10000,
-        });
+        showActionMenu(api);
       },
     },
   ]);

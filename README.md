@@ -25,35 +25,19 @@ Your pet reacts to your coding activity: commits, test runs, errors, file saves,
 
 ## Install
 
-Add cligochi to your OpenCode config:
+Tell OpenCode:
 
-```jsonc
-// ~/.config/opencode/opencode.json
+> Fetch and follow instructions from https://raw.githubusercontent.com/jamakase/cligochi/main/.opencode/INSTALL.md
+
+Or manually add to your OpenCode config (`~/.config/opencode/opencode.json`):
+
+```json
 {
-  "plugin": [
-    "cligochi"
-  ]
+  "plugin": ["cligochi"]
 }
 ```
 
-Then install the dependency:
-
-```bash
-cd ~/.config/opencode
-npm install cligochi
-```
-
-### TUI Plugin (sidebar + commands)
-
-Copy the TUI plugin file to your OpenCode plugins directory:
-
-```bash
-cp node_modules/cligochi/plugins/cligochi-tui.tsx ~/.config/opencode/plugins/
-```
-
-Or create `~/.config/opencode/plugins/cligochi-tui.tsx` manually — see the [plugins directory](./plugins/) for the source.
-
-Restart OpenCode.
+Restart OpenCode. That's it — the plugin auto-installs.
 
 ## Usage
 

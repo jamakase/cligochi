@@ -295,7 +295,7 @@ function PetSidebar(props: { api: TuiPluginApi; sessionId: string }) {
 
 function showActionMenu(api: TuiPluginApi) {
   const DialogSelect = api.ui.DialogSelect
-  api.ui.dialog.setSize("small")
+  api.ui.dialog.setSize("medium")
   api.ui.dialog.replace(() => (
     <DialogSelect
       title="Cligochi"

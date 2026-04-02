@@ -1,6 +1,6 @@
 {
   "name": "cligochi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tamagotchi virtual pet plugin for OpenCode — raise a pet while you code",
   "type": "module",
   "main": "dist/index.js",
